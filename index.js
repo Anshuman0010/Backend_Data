@@ -1457,6 +1457,10 @@ app.get('/api/test-twilio', async (req, res) => {
 
 // Add this after your other routes but before error handlers
 
+app.get('/', (req, res) => {
+  res.json({ message: 'Welcome to the API!' });
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
