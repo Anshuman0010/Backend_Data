@@ -23,7 +23,7 @@ const BlogPost = require('./models/BlogPost');
 
 const app = express();
 app.use(cors({
-  origin: process.env.CLIENT_URL,
+  origin: "*",
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -1515,6 +1515,10 @@ app.get('/api/test-twilio', async (req, res) => {
 // Register the blog routes with /api prefix
 
 // Add this after your other routes but before error handlers
+
+app.get('/', (req, res) => {
+  res.json({ message: 'Welcome to the API!' });
+});
 
 
 const PORT = process.env.PORT || 3000;
