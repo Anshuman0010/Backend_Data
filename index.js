@@ -292,52 +292,111 @@ app.post('/api/register', async (req, res) => {
 // Optional: Add login endpoint
 app.post('/api/login', async (req, res) => {
   try {
-    const { phoneNumber, otp } = req.body;
-    const normalizedPhone = normalizePhoneNumber(phoneNumber);
-    const storedOTP = otpStore.get(normalizedPhone);
+    const { email, password, phoneNumber, otp } = req.body;
 
-    if (!storedOTP || storedOTP !== otp) {
-      // Log failed login attempt
-      if (storedOTP) {
-        const user = await User.findOne({ phoneNumber: normalizedPhone });
-        if (user) {
-          await logUserActivity(user._id, 'login', req, 'failed');
+    // Handle email/password login
+    if (email && password) {
+      const user = await User.findOne({ email });
+      if (!user) {
+        return res.status(401).json({ 
+          success: false, 
+          message: 'Invalid email or password' 
+        });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, user.password);
+      if (!isValidPassword) {
+        return res.status(401).json({ 
+          success: false, 
+          message: 'Invalid email or password' 
+        });
+      }
+
+      const token = jwt.sign(
+        { userId: user._id, email: user.email },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      // Log successful login
+      try {
+        await logUserActivity(user._id, 'login', req, 'success');
+      } catch (logError) {
+        console.error('Error logging login activity:', logError);
+      }
+
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phoneNumber: user.phoneNumber,
+          isAdmin: user.isAdmin
         }
+      });
+    }
+
+    // Handle phone/OTP login
+    if (phoneNumber && otp) {
+      const normalizedPhone = normalizePhoneNumber(phoneNumber);
+      const storedOTP = otpStore.get(normalizedPhone);
+
+      if (!storedOTP || storedOTP !== otp) {
+        // Log failed login attempt
+        if (storedOTP) {
+          const user = await User.findOne({ phoneNumber: normalizedPhone });
+          if (user) {
+            await logUserActivity(user._id, 'login', req, 'failed');
+          }
+        }
+        return res.status(401).json({ success: false, message: 'Invalid OTP' });
       }
-      return res.status(401).json({ success: false, message: 'Invalid OTP' });
-    }
 
-    let user = await User.findOne({ phoneNumber: normalizedPhone });
-    if (!user) {
-      user = new User({ phoneNumber: normalizedPhone });
-      await user.save();
-    }
-
-    const token = jwt.sign({ userId: user._id }, JWT_SECRET);
-    
-    // Log successful login
-    try {
-      await logUserActivity(user._id, 'login', req, 'success');
-      console.log('Login activity logged successfully');
-    } catch (logError) {
-      console.error('Error logging login activity:', logError);
-    }
-
-    res.json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        phoneNumber: user.phoneNumber,
-        isProfileComplete: user.isProfileComplete
+      let user = await User.findOne({ phoneNumber: normalizedPhone });
+      if (!user) {
+        user = new User({ phoneNumber: normalizedPhone });
+        await user.save();
       }
+
+      const token = jwt.sign({ userId: user._id }, JWT_SECRET);
+      
+      // Log successful login
+      try {
+        await logUserActivity(user._id, 'login', req, 'success');
+      } catch (logError) {
+        console.error('Error logging login activity:', logError);
+      }
+
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: user._id,
+          phoneNumber: user.phoneNumber,
+          isProfileComplete: user.isProfileComplete
+        }
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid login credentials'
     });
+
   } catch (error) {
     console.error('Login error:', error);
     // Log error if we have user information
-    if (req.body.phoneNumber) {
+    if (req.body.email || req.body.phoneNumber) {
       try {
-        const user = await User.findOne({ phoneNumber: normalizePhoneNumber(req.body.phoneNumber) });
+        const user = await User.findOne({ 
+          $or: [
+            { email: req.body.email },
+            { phoneNumber: req.body.phoneNumber ? normalizePhoneNumber(req.body.phoneNumber) : null }
+          ]
+        });
         if (user) {
           await logUserActivity(user._id, 'login', req, 'failed');
         }
